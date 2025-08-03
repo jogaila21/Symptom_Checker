@@ -1,0 +1,21 @@
+{
+  "name": "symptom-checker",
+  "version": "1.0.0",
+  "description": "Symptom checker powered by ChatGPT",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Fadi Najar",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "colors": "^1.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.1",
+    "express": "^5.1.0",
+    "openai": "^5.11.0",
+    "readline-sync": "^1.4.10"
+  }
+}

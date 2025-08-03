@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Symptom Checker Chatbot</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; }
+    #chat-container { display: none; }
+    .message { margin: 0.5rem 0; padding: 0.5rem; border-radius: 4px; }
+    .user-message { background-color: #d0f0fd; text-align: right; }
+    .bot-message { background-color: #f0f0f0; }
+    #messages { height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem; }
+    #history { display: none; margin-top: 1rem; }
+    #search-history li { margin: 0.3rem 0; }
+  </style>
+</head>
+<body>
+
+  <h1>Symptom Checker</h1>
+
+  <div id="profile-form">
+    <h2>User Profile</h2>
+    <form id="userProfileForm">
+      <label>
+        Name:<br />
+        <input type="text" id="name" required />
+      </label><br /><br />
+      <label>
+        Age:<br />
+        <input type="number" id="age" required min="0" />
+      </label><br /><br />
+      <label>
+        Gender:<br />
+        <select id="gender" required>
+          <option value="">Select</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="other">Other</option>
+        </select>
+      </label><br /><br />
+      <label>
+        Disabilities / Pre-existing conditions (comma separated):<br />
+        <input type="text" id="disabilities" />
+      </label><br /><br />
+      <button type="submit">Start Chat</button>
+    </form>
+  </div>
+
+  <div id="chat-container">
+    <h2>Chat</h2>
+    <div id="messages"></div>
+    <form id="chatForm">
+      <input type="text" id="messageInput" placeholder="Type your symptoms here..." autocomplete="off" required />
+      <button type="submit">Send</button>
+    </form>
+    <div id="feedback-container" style="display: none; margin-top: 1rem;">
+      <p>Was this helpful?</p>
+      <button id="thumbs-up">👍</button>
+      <button id="thumbs-down">👎</button>
+    </div>
+  </div>
+
+  <div id="history">
+    <h3>Previous Symptom Searches</h3>
+    <ul id="search-history"></ul>
+    <button id="clear-history">Clear History</button>
+  </div>
+
+  <script>
+    const profileForm = document.getElementById('userProfileForm');
+    const profileDiv = document.getElementById('profile-form');
+    const chatDiv = document.getElementById('chat-container');
+    const messagesDiv = document.getElementById('messages');
+    const chatForm = document.getElementById('chatForm');
+    const historyDiv = document.getElementById('history');
+    const feedbackContainer = document.getElementById('feedback-container');
+
+    let userProfile = null;
+    let chatHistory = [];
+
+    // Save symptom to localStorage
+    function saveSearch(symptom) {
+      const stored = JSON.parse(localStorage.getItem('symptomHistory')) || [];
+      stored.push(symptom);
+      localStorage.setItem('symptomHistory', JSON.stringify(stored));
+    }
+
+    // Load and display search history
+    function loadSearchHistory() {
+      const stored = JSON.parse(localStorage.getItem('symptomHistory')) || [];
+      const list = document.getElementById('search-history');
+      list.innerHTML = '';
+      stored.forEach(symptom => {
+        const li = document.createElement('li');
+        li.textContent = symptom;
+        list.appendChild(li);
+      });
+    }
+
+    // Clear history
+    document.getElementById('clear-history').addEventListener('click', () => {
+      localStorage.removeItem('symptomHistory');
+      document.getElementById('search-history').innerHTML = '';
+    });
+
+    profileForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      userProfile = {
+        name: document.getElementById('name').value.trim(),
+        age: parseInt(document.getElementById('age').value, 10),
+        gender: document.getElementById('gender').value,
+        disabilities: document.getElementById('disabilities').value
+          .toLowerCase()
+          .split(',')
+          .map(d => d.trim())
+          .filter(Boolean),
+      };
+      profileDiv.style.display = 'none';
+      chatDiv.style.display = 'block';
+      historyDiv.style.display = 'block';
+      addBotMessage(`Hello ${userProfile.name}, please describe your symptoms.`);
+      loadSearchHistory(); // show saved history
+    });
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userInput = document.getElementById('messageInput').value.trim();
+      if (!userInput) return;
+
+      addUserMessage(userInput);
+      hideFeedbackOptions(); // hide any old feedback prompt
+      saveSearch(userInput);  // Save to localStorage
+      loadSearchHistory();    // Refresh visible history
+      document.getElementById('messageInput').value = '';
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userInput, userProfile, chatHistory }),
+        });
+
+        if (!response.ok) throw new Error('Network error');
+
+        const data = await response.json();
+
+        console.log('API response:', data);
+
+        addBotMessage(data.botReply);
+        if (data.severity) {
+          addBotMessage(`Severity: ${data.severity}`);
+        }
+        if (data.matchedConditions) {
+          addBotMessage(`Matched Conditions: ${data.matchedConditions.length ? data.matchedConditions.join(', ') : 'None'}`);
+        }
+
+        chatHistory.push(['user', userInput]);
+        chatHistory.push(['assistant', data.botReply]);
+
+        showFeedbackOptions(); // show thumbs up and down
+      } catch (err) {
+        addBotMessage('Error: ' + err.message);
+      }
+    });
+
+    function addUserMessage(text) {
+      const div = document.createElement('div');
+      div.className = 'message user-message';
+      div.textContent = text;
+      messagesDiv.appendChild(div);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function addBotMessage(text) {
+      const div = document.createElement('div');
+      div.className = 'message bot-message';
+      div.textContent = text;
+      messagesDiv.appendChild(div);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function showFeedbackOptions() {
+      feedbackContainer.style.display = 'block';
+    }
+
+    function hideFeedbackOptions() {
+      feedbackContainer.style.display = 'none';
+    }
+
+    document.getElementById('thumbs-up').addEventListener('click', () => {
+      addBotMessage("Glad to be of help!");
+      hideFeedbackOptions();
+    });
+
+    document.getElementById('thumbs-down').addEventListener('click', async () => {
+      hideFeedbackOptions();
+      const lastUserMessage = chatHistory.findLast(msg => msg[0] === 'user')?.[1] || "";
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userInput: "The user was not satisfied with your last answer. Prompt them to provide more symptoms.",
+            userProfile,
+            chatHistory,
+          }),
+        });
+
+        if (!response.ok) throw new Error('Network error');
+
+        const data = await response.json();
+
+        addBotMessage(data.botReply);
+        chatHistory.push(['user', "User gave thumbs down"]);
+        chatHistory.push(['assistant', data.botReply]);
+      } catch (err) {
+        addBotMessage('Error following up: ' + err.message);
+      }
+    });
+  </script>
+
+</body>
+</html>
